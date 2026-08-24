@@ -1,0 +1,32 @@
+{
+  "name": "newtube-widget",
+  "version": "1.0.0",
+  "description": "NewTube — YouTube client for legacy Samsung Smart TVs (Orsay / E-series 2012)",
+  "main": "index.js",
+  "scripts": {
+    "start": "webpack --config webpack.config.js --mode development --progress --watch",
+    "build": "webpack --config webpack.config.js --mode production --progress",
+    "package": "node ../scripts/package-widget.js"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "classnames": "^2.2.6",
+    "core-js": "^3.6.5",
+    "react": "^15.6.2",
+    "react-dom": "^15.6.2",
+    "regenerator-runtime": "^0.13.7"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.9.0",
+    "@babel/plugin-proposal-class-properties": "^7.8.3",
+    "@babel/plugin-syntax-bigint": "^7.8.3",
+    "@babel/preset-env": "^7.9.0",
+    "@babel/preset-react": "^7.9.4",
+    "babel-loader": "^8.1.0",
+    "babel-loader-exclude-node-modules-except": "^1.0.3",
+    "file-loader": "^6.0.0",
+    "remove-strict-webpack-plugin": "^0.1.2",
+    "webpack": "^4.42.1",
+    "webpack-cli": "^3.3.11"
+  }
+}

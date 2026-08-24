@@ -1,0 +1,26 @@
+{
+  "name": "NewTube",
+  "short_name": "NewTube",
+  "description": "YouTube client for phone + legacy Samsung Smart TVs",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f0f0f",
+  "theme_color": "#ff0033",
+  "lang": "tr",
+  "icons": [
+    {
+      "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxOTIwIDE5MjAiPjxzdHlsZT5yZWN0e2ZpbGw6I2ZmMDAzM308L3N0eWxlPjxyZWN0IHdpZHRoPSIxOTIwIiBoZWlnaHQ9IjE5MjAiIHJ4PSI0MjAiLz48cG9seWdvbiBwb2ludHM9IjcwMCw0ODAgMTQ0MCw5NjAgNzAwLDE0NDAiIGZpbGw9IndoaXRlIi8+PC9zdmc+",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48c3R5bGU+cmVjdHtmaWxsOiNmZjAwMzN9PC9zdHlsZT48cmVjdCB3aWR0aD0iNTEyIiBoZWlnaHQ9IjUxMiIgcng9IjExMCIvPjxwb2x5Z29uIHBvaW50cz0iMTg4LDEyOCAzODQsMjU2IDE4OCwzODQiIGZpbGw9IndoaXRlIi8+PC9zdmc+",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

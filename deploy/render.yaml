@@ -1,0 +1,39 @@
+# Render.com Blueprint — NewTube server, free tier, 1-click deploy.
+#
+# How to use:
+#   1. Push this repo to your GitHub account
+#   2. Go to https://render.com and create a new "Blueprint" instance
+#   3. Point it at your GitHub repo
+#   4. Render reads this file and creates the service
+#   5. After deploy (~3 min), you get a URL like https://newtube-xxxx.onrender.com
+#   6. Put that URL into your TV's NewTube widget Settings tab
+#   7. Done — works 24/7, no PC, no phone, no electricity bill
+#
+# Free tier notes:
+#   - Spins down after 15 min of no traffic; spins back up on first request (~30s)
+#   - 750 hours/month free
+#   - 100 GB outbound bandwidth/month
+#   - For an always-on experience, upgrade to the $7/mo plan
+#
+# Optional: add a YouTube Data API v3 key as a secret env var for richer search.
+
+services:
+  - type: web
+    name: newtube
+    runtime: python
+    plan: free
+    buildCommand: "apt-get update && apt-get install -y ffmpeg && pip install -r server/requirements.txt"
+    startCommand: "cd server && NEWTUBE_PORT=$PORT NEWTUBE_INSECURE_TLS=0 python3 -m uvicorn app:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: NEWTUBE_HEIGHT
+        value: "720"
+      - key: NEWTUBE_FPS
+        value: "30"
+      - key: YOUTUBE_API_KEY
+        sync: false        # set this in the Render dashboard if you have a key
+        optional: true
+      - key: NEWTUBE_COOKIES
+        sync: false        # paste a cookies.txt here for bot-bypass
+        optional: true
+    healthCheckPath: /api/version
+    autoDeploy: true
