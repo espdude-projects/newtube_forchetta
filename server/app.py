@@ -480,6 +480,78 @@ def root():
     }
 
 
+# --- self-healing: if widget files are present but the install manifest is
+# missing (common when the server is deployed without running the build
+# steps), generate it on the fly so the TV can still find the widget.
+
+def _ensure_widget_manifest() -> None:
+    """Build a widgetlist.xml + zip from widget/dist/ if they're not there yet.
+
+    This is a convenience for cloud deployments (Render, Fly.io, etc.)
+    where we deploy the pre-built widget bundle but never run `npm run
+    package`.  Without this, the TV's User App Sync would have nothing
+    to download.
+    """
+    import zipfile
+    widget_dist = REPO_ROOT / "widget" / "dist"
+    target_dist = REPO_ROOT / "dist"
+    target_install = target_dist / "widget-install"
+    target_manifest = target_dist / "widgetlist.xml"
+
+    if not (widget_dist / "index.js").exists():
+        return  # nothing to do
+
+    target_dist.mkdir(parents=True, exist_ok=True)
+    target_install.mkdir(parents=True, exist_ok=True)
+
+    # Build a zip with config.xml, index.html, widget.info, dist/, img/
+    widget_root = REPO_ROOT / "widget"
+    if not any(target_install.glob("NewTube*.zip")):
+        zip_name = f"NewTube_widget_{time.strftime('%Y%m%d')}.zip"
+        zip_path = target_install / zip_name
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            for rel in ("config.xml", "index.html", "widget.info"):
+                p = widget_root / rel
+                if p.exists():
+                    zf.write(p, rel)
+            if widget_dist.is_dir():
+                for f in widget_dist.iterdir():
+                    zf.write(f, f"dist/{f.name}")
+            img_dir = widget_root / "img"
+            if img_dir.is_dir():
+                for f in img_dir.iterdir():
+                    zf.write(f, f"img/{f.name}")
+        log.info("auto-generated widget install zip: %s", zip_path)
+
+    # Build a manifest pointing at our own /widget-install/* URL
+    if not target_manifest.exists():
+        zips = sorted(target_install.glob("NewTube*.zip"))
+        if not zips:
+            return
+        zip_name = zips[-1].name
+        size = zips[-1].stat().st_size
+        manifest = (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<rsp stat="ok">\n'
+            '<list>\n'
+            '<widget id="NewTube">\n'
+            f'<title>NewTube</title>\n'
+            f'<compression type="zip" size="{size}"/>\n'
+            '<description>NewTube — YouTube client for legacy Samsung Smart TVs</description>\n'
+            f'<download>/widget-install/{zip_name}</download>\n'
+            '</widget>\n'
+            '</list>\n'
+            '</rsp>\n'
+        )
+        target_manifest.write_text(manifest, encoding="utf-8")
+        log.info("auto-generated widget manifest: %s", target_manifest)
+
+
+# Run once on startup (and again on first request, in case paths
+# weren't ready at import time).
+_ensure_widget_manifest()
+
+
 @app.get("/api/version")
 def version():
     return {"server": "newtube", "version": "1.0.0"}
