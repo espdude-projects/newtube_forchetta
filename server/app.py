@@ -701,28 +701,96 @@ def cast_clear():
 # browser.  The actual TV install is via the Orsay widget format.
 
 from fastapi.staticfiles import StaticFiles
+import io
+import zipfile
 import pathlib
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 WIDGET_DIST_DIR = REPO_ROOT / "widget" / "dist"
 WIDGET_INSTALL_DIR = REPO_ROOT / "dist" / "widget-install"
 WIDGET_MANIFEST = REPO_ROOT / "dist" / "widgetlist.xml"
+WIDGET_ROOT = REPO_ROOT / "widget"
 
+# Preview in browser (the widget HTML rendered standalone)
 if WIDGET_DIST_DIR.exists():
     app.mount("/widget-preview", StaticFiles(directory=str(WIDGET_DIST_DIR), html=True), name="widget-preview")
 
-# /widget-install/* serves the .zip files the TV's User App Sync downloads
-if WIDGET_INSTALL_DIR.exists():
-    app.mount("/widget-install", StaticFiles(directory=str(WIDGET_INSTALL_DIR)), name="widget-install")
 
-# /widgetlist.xml is the manifest the TV reads to find the installable zips
-if WIDGET_MANIFEST.exists():
-    @app.get("/widgetlist.xml")
-    def widgetlist():
-        # Rewrite the placeholder host to whatever the TV is talking to us on,
-        # so the user doesn't have to edit the manifest by hand.
-        text = WIDGET_MANIFEST.read_text(encoding="utf-8")
-        return Response(content=text, media_type="application/xml")
+def _build_widget_zip() -> bytes | None:
+    """Build a NewTube widget install zip from widget/dist/ on the fly.
+
+    Returns the zip bytes, or None if the widget bundle isn't there.
+    """
+    if not (WIDGET_DIST_DIR / "index.js").exists():
+        return None
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for rel in ("config.xml", "index.html", "widget.info"):
+            p = WIDGET_ROOT / rel
+            if p.exists():
+                zf.write(p, rel)
+        for f in WIDGET_DIST_DIR.iterdir():
+            if f.is_file():
+                zf.write(f, f"dist/{f.name}")
+        img_dir = WIDGET_ROOT / "img"
+        if img_dir.is_dir():
+            for f in img_dir.iterdir():
+                if f.is_file():
+                    zf.write(f, f"img/{f.name}")
+    return buf.getvalue()
+
+
+@app.get("/widget-install/{name}")
+def widget_install(name: str):
+    """Serve the NewTube widget install zip on demand.
+
+    The TV's User App Sync hits /widgetlist.xml, which in turn points at
+    a URL like /widget-install/NewTube_YYYYMMDD.zip.  We build the zip
+    on the fly from the committed widget/dist/ so no separate build
+    step is needed.
+    """
+    if not name.lower().startswith("newtube") or not name.lower().endswith(".zip"):
+        raise HTTPException(404, "not found")
+    data = _build_widget_zip()
+    if data is None:
+        raise HTTPException(404, "widget bundle not found")
+    return Response(
+        content=data,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{name}"'},
+    )
+
+
+@app.get("/widgetlist.xml")
+def widgetlist(request: Request):
+    """The manifest the TV reads to find the installable zip.
+
+    Built dynamically on every request so we don't need the file to be
+    pre-generated on disk.
+    """
+    data = _build_widget_zip()
+    if data is None:
+        raise HTTPException(404, "widget bundle not found in widget/dist/")
+    size = len(data)
+    # Use the public hostname the request came in on (so the TV's
+    # "<server ip>/widgetlist.xml" request resolves correctly).
+    host = request.headers.get("host", "localhost")
+    scheme = request.url.scheme
+    url = f"{scheme}://{host}/widget-install/NewTube_widget_live.zip"
+    text = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<rsp stat="ok">\n'
+        '<list>\n'
+        '<widget id="NewTube">\n'
+        '<title>NewTube</title>\n'
+        f'<compression type="zip" size="{size}"/>\n'
+        '<description>NewTube — YouTube client for legacy Samsung Smart TVs</description>\n'
+        f'<download>{url}</download>\n'
+        '</widget>\n'
+        '</list>\n'
+        '</rsp>\n'
+    )
+    return Response(content=text, media_type="application/xml")
 
 
 # --- install hint page (for desktop browser) ----------------------------
