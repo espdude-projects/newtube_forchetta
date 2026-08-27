@@ -21,6 +21,7 @@ import asyncio
 import json
 import logging
 import os
+import pathlib
 import re
 import threading
 import time
@@ -76,6 +77,17 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 log = logging.getLogger("newtube")
+
+
+# ----------------------------------------------------------------------------
+# Paths
+# ----------------------------------------------------------------------------
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+WIDGET_DIST_DIR = REPO_ROOT / "widget" / "dist"
+WIDGET_INSTALL_DIR = REPO_ROOT / "dist" / "widget-install"
+WIDGET_MANIFEST = REPO_ROOT / "dist" / "widgetlist.xml"
+WIDGET_ROOT = REPO_ROOT / "widget"
 
 
 # ----------------------------------------------------------------------------
@@ -703,13 +715,10 @@ def cast_clear():
 from fastapi.staticfiles import StaticFiles
 import io
 import zipfile
-import pathlib
 
-REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
-WIDGET_DIST_DIR = REPO_ROOT / "widget" / "dist"
-WIDGET_INSTALL_DIR = REPO_ROOT / "dist" / "widget-install"
-WIDGET_MANIFEST = REPO_ROOT / "dist" / "widgetlist.xml"
-WIDGET_ROOT = REPO_ROOT / "widget"
+# REPO_ROOT, WIDGET_DIST_DIR, WIDGET_INSTALL_DIR, WIDGET_MANIFEST, WIDGET_ROOT
+# are defined at the top of the file (before _ensure_widget_manifest() is
+# called at module load time).
 
 # Preview in browser (the widget HTML rendered standalone)
 if WIDGET_DIST_DIR.exists():
