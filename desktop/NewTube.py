@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import os
 import queue
+import re
 import socket
 import subprocess
 import sys
@@ -233,17 +234,66 @@ def try_bind_port(py: Path, preferred: int) -> tuple[ServerProcess, int]:
 # --------------------------------------------------------------------------
 
 def get_local_ip() -> str:
-    """Best-effort detection of the LAN IP (the one TVs see)."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    """Best-effort detection of the LAN IP (the one TVs see).
+
+    Tries several strategies, in order of reliability:
+      1. Open a UDP socket to a public address; the OS picks the right
+         outgoing interface.  This is what most people want.
+      2. Walk `ipconfig` (Windows) / `ifconfig` (Unix) looking for the
+         first non-virtual IPv4 address.
+      3. Resolve the local hostname.
+      4. Fall back to 127.0.0.1.
+
+    Returns the IP that is most likely reachable from the TV.
+    """
+    # 1) UDP socket trick
     try:
-        # Doesn't actually send anything, just lets the OS pick an interface
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(2)
         s.connect(("8.8.8.8", 80))
         ip = s.getsockname()[0]
-    except Exception:
-        ip = "127.0.0.1"
-    finally:
         s.close()
-    return ip
+        if ip and not ip.startswith("127."):
+            return ip
+    except Exception:
+        pass
+
+    # 2) Parse ipconfig / ifconfig output for non-virtual IPv4 addresses
+    BLACKLIST_PREFIXES = ("127.", "169.254.", "0.", "255.", "::1")
+    VIRTUAL_KEYWORDS = ("virtual", "vmware", "hyper-v", "vethernet",
+                         "wsl", "docker", "veth", "br-", "tun", "tap")
+    try:
+        if os.name == "nt":
+            out = subprocess.check_output(
+                ["ipconfig"], stderr=subprocess.DEVNULL, text=True, timeout=5
+            )
+        else:
+            out = subprocess.check_output(
+                ["ifconfig"], stderr=subprocess.DEVNULL, text=True, timeout=5
+            )
+        for line in out.splitlines():
+            # Look for "IPv4 Address" or "inet " patterns
+            if "IPv4" in line or "inet " in line:
+                m = re.search(r"(\d{1,3}(?:\.\d{1,3}){3})", line)
+                if m:
+                    ip = m.group(1)
+                    if (ip.startswith(BLACKLIST_PREFIXES)
+                            or any(k in line.lower() for k in VIRTUAL_KEYWORDS)):
+                        continue
+                    return ip
+    except Exception:
+        pass
+
+    # 3) gethostbyname
+    try:
+        ip = socket.gethostbyname(socket.gethostname())
+        if ip and not ip.startswith("127."):
+            return ip
+    except Exception:
+        pass
+
+    # 4) Fallback
+    return "127.0.0.1"
 
 # --------------------------------------------------------------------------
 # GUI

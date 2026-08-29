@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rsp stat="ok">
+<list>
+<widget id="NewTube">
+<title>NewTube</title>
+<compression type="zip" size="117151"/>
+<description>NewTube — YouTube client for legacy Samsung Smart TVs</description>
+<download>http://YOUR_SERVER_IP:8088/widget-install/NewTube_1.0.0_20260829.zip</download>
+</widget>
+</list>
+</rsp>

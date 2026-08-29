@@ -130,13 +130,18 @@ export default class App extends React.Component {
 				</Popup>
 			) : null}
 			{!player && this.state.showServerWarning ? (
-				<Popup onClose={() => this.setState({ showServerWarning: false })}>
+				<Popup
+					autoClose={6000}
+					okLabel="Kapat"
+					onClose={() => this.setState({ showServerWarning: false })}
+				>
 					<h2>NewTube'a hoş geldin</h2>
 					<p>Aramadan önce lütfen <b>Ayarlar</b> sekmesine git ve
 						NewTube sunucu URL'ni ayarla.</p>
 					<p>Varsayılan: <code>http://newtube.local:8088</code> (mDNS kuruluysa çalışır).</p>
 					<p>Yoksa bilgisayarının yerel IP'sini yaz, örn.
 						<code>http://192.168.1.50:8088</code>.</p>
+					<p><small>(Bu mesaj 6 saniye sonra otomatik kapanır)</small></p>
 				</Popup>
 			) : null}
 			<Tabs

@@ -272,16 +272,16 @@ const STORAGE = {
 };
 
 const DEFAULT_INVIDIOUS = [
+  'https://pipedapi.kavin.rocks',
+  'https://watchapi.whatever.social',
+  'https://pipedapi.rivo.lol',
+  'https://piped-api.lunar.icu',
   'https://invidious.fdn.fr',
   'https://yewtu.be',
   'https://invidious.protokolla.fi',
-  'https://invidious.privacydev.net',
-  'https://iv.melmac.space',
   'https://invidious.materialio.us',
-  'https://invidious.flokinet.to',
-  'https://invidious.lunar.icu',
   'https://invidious.nerdvpn.de',
-  'https://vid.puffyan.us',
+  'https://invidious.flokinet.to',
 ];
 
 let state = {
@@ -322,18 +322,43 @@ async function tryInstance(base, path) {
 }
 
 async function searchYouTube(q) {
-  // Try the user's preferred instance first, then fall back to others
+  // Try the user's preferred instance first, then fall back to others.
+  // We also try Piped (pipedapi.*) which uses a slightly different
+  // /search?q= endpoint — its response is shaped a bit differently so
+  // we normalise it to look like Invidious.
   const order = [
     state.invidious,
     ...DEFAULT_INVIDIOUS.filter(u => u !== state.invidious),
   ];
   for (const base of order) {
     try {
-      const data = await tryInstance(base,
-        `/api/v1/search?q=${encodeURIComponent(q)}&type=video` +
-        `&fields=title,videoId,author,lengthSeconds,videoThumbnails`
-      );
-      if (Array.isArray(data)) {
+      let data = null;
+      if (base.includes("piped")) {
+        // Piped API: /search?q=...&filter=videos
+        data = await tryInstance(base,
+          `/search?q=${encodeURIComponent(q)}&filter=videos`
+        );
+        if (Array.isArray(data)) {
+          // Normalise Piped → Invidious shape
+          data = data.filter(it => it && it.type === "video" || it && it.url)
+            .map(it => ({
+              videoId: (it.url || "").replace("/watch?v=", "").replace("/watch?v=", ""),
+              title: it.title,
+              author: it.uploaderName || it.uploader,
+              lengthSeconds: it.duration,
+              videoThumbnails: it.thumbnail ? [{
+                url: it.thumbnail,
+                width: 720, height: 405,
+              }] : [],
+            })).filter(it => it.videoId);
+        }
+      } else {
+        data = await tryInstance(base,
+          `/api/v1/search?q=${encodeURIComponent(q)}&type=video` +
+          `&fields=title,videoId,author,lengthSeconds,videoThumbnails`
+        );
+      }
+      if (Array.isArray(data) && data.length) {
         state.invidious = base;
         localStorage.setItem(STORAGE.invidious, base);
         return data;
@@ -343,7 +368,7 @@ async function searchYouTube(q) {
     await new Promise(r => setTimeout(r, 200));
   }
   // Nothing worked
-  return { __error: 'Tüm Invidious sunucuları cevap vermedi. ' +
+  return { __error: 'Tüm Invidious/Piped sunucuları cevap vermedi. ' +
     'Ayarlar\'dan farklı bir sunucu deneyebilir veya ' +
     'YouTube Data API v3 anahtarı girebilirsin.' };
 }
