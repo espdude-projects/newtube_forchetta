@@ -6,6 +6,7 @@ import Tabs from './Tabs';
 import VideoPlayer from './VideoPlayer';
 import Popup from "./Popup";
 import config from './config';
+import { discoverServer } from './ServerDiscovery';
 
 const widgetAPI = new Common.API.Widget();
 
@@ -24,7 +25,8 @@ export default class App extends React.Component {
 		super(props);
 		this.state = {
 			showServerWarning: !this._looksLikeValidServer(config.serverBase),
-			castToast: null,        // {videoId, title}
+			castToast: null,
+			autoScanDone: false,
 		};
 		this._castPollTimer = null;
 		this._castPollInFlight = false;
@@ -34,8 +36,42 @@ export default class App extends React.Component {
 	_looksLikeValidServer(url) {
 		return typeof url === "string"
 			&& /^https?:\/\/[\w.-]+(:\d+)?$/.test(url)
-			&& url.indexOf("newtube.local") === -1;  // default placeholder
+			&& url.indexOf("newtube.local") === -1;
 	}
+
+	componentDidMount() {
+		widgetAPI.sendReadyEvent();
+		this._startCastPolling();
+		// On first launch, automatically try to find a NewTube server
+		// on the local network so the user doesn't have to type the IP.
+		if (!this._looksLikeValidServer(config.serverBase)) {
+			this._autoDiscover();
+		}
+	}
+
+	/**
+	 * Try a few common NewTube server URLs in the background.  If we
+	 * find one, set it as the current server automatically.  This is
+	 * best-effort and runs silently; the user can still set the URL
+	 * manually in Settings.
+	 */
+	_autoDiscover = async () => {
+		if (this.state.autoScanDone) return;
+		this.setState({ autoScanDone: true });
+		try {
+			const found = await discoverServer({ timeoutMs: 20000 });
+			if (found && found.length > 0) {
+				const best = found[0];
+				const url = `http://${best.ip}:${best.port}`;
+				config.serverBase = url;
+				try { localStorage.setItem(config.STORAGE_KEY, url); } catch (e) {}
+				// Close the welcome popup if it was open
+				this.setState({ showServerWarning: false });
+			}
+		} catch (e) {
+			// Silent failure — user can set manually
+		}
+	};
 
 	componentDidMount() {
 		widgetAPI.sendReadyEvent();

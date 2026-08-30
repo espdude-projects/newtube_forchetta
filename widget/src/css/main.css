@@ -191,3 +191,61 @@ progress::-webkit-progress-value {
 	text-decoration: none;
 }
 
+.server-editor {
+	margin: 20px auto;
+	padding: 20px;
+	background: rgba(255,255,255,0.05);
+	border: 1px solid #666;
+	border-radius: 8px;
+	width: 80%;
+}
+
+.server-editor input {
+	width: 100%;
+	padding: 16px 20px;
+	font-size: 32px;
+	font-family: monospace;
+	background: #111;
+	color: white;
+	border: 2px solid #D8A638;
+	border-radius: 6px;
+	outline: none;
+	margin: 12px 0;
+	box-sizing: border-box;
+}
+
+.server-editor input:focus {
+	border-color: #6da4ff;
+	box-shadow: 0 0 0 2px rgba(109,164,255,0.5);
+}
+
+.server-editor .editor-buttons {
+	display: flex;
+	gap: 16px;
+	margin-top: 16px;
+	justify-content: center;
+}
+
+.server-editor .editor-buttons .button.secondary {
+	background: #555;
+}
+
+.scanning {
+	color: #ffd966;
+	font-size: 26px;
+	margin: 8px 0;
+}
+
+.found-servers {
+	margin: 16px 0;
+	padding: 16px;
+	background: rgba(216, 166, 56, 0.15);
+	border: 1px solid #D8A638;
+	border-radius: 6px;
+}
+
+.found-servers p {
+	margin: 0 0 12px 0;
+	font-size: 26px;
+}
+

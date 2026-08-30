@@ -2,11 +2,13 @@ import List from './List';
 import React from 'react';
 import config from './config';
 import RemoteControlListener from './RemoteControlListener';
+import { discoverServer } from './ServerDiscovery';
 
 const SERVER_OPTION = 'server';
 const TEST_OPTION = 'testServer';
 const CLEAR_CACHE_OPTION = 'clearCache';
 const ABOUT_OPTION = 'about';
+const SCAN_OPTION = 'scanNetwork';
 
 const tvKey = (typeof Common !== "undefined" && Common.API && Common.API.TVKeyValue)
     ? new Common.API.TVKeyValue()
@@ -17,10 +19,15 @@ export default class Settings extends React.Component {
     constructor(props) {
         super(props);
         this.state = {
-            editingServer: false,
-            serverDraft: config.serverBase,
             testStatus: null,
-            testStatusKind: null,  // 'ok' | 'err' | null
+            testStatusKind: null,
+            // Discovery
+            scanning: false,
+            scanProgress: 0,
+            found: [],
+            // Manual edit
+            editing: false,
+            editDraft: config.serverBase,
         };
     }
 
@@ -39,68 +46,109 @@ export default class Settings extends React.Component {
     };
 
     /**
-     * Open a full-screen text-editor overlay that uses the Samsung TV's
-     * built-in XT9 IME (the same keyboard the Search box uses) so the
-     * user can type the server URL with the remote.  We do this by
-     * programmatically focusing an <input> that has the Samsung IME
-     * attached, instead of using window.prompt() (which the Orsay
-     * browser doesn't support).
+     * Scan the local network for any NewTube server and show the
+     * results as a pickable list.  The user just clicks the one
+     * matching their PC and the URL is set automatically.
      */
-    _openServerEditor = () => {
-        // Create / reuse a hidden input wired to the Samsung IME
-        let input = document.getElementById("newtube-server-input");
-        if (!input) {
-            input = document.createElement("input");
-            input.id = "newtube-server-input";
-            input.type = "text";
-            input.autocomplete = "off";
-            input.style.position = "absolute";
-            input.style.left = "-9999px";
-            input.style.opacity = "0";
-            input.style.width = "1px";
-            input.style.height = "1px";
-            document.body.appendChild(input);
-        }
-        input.value = config.serverBase;
-        // Attach the Samsung XT9 IME (same approach as Search.js)
+    _scanNetwork = async () => {
+        if (this.state.scanning) return;
+        this.setState({ scanning: true, scanProgress: 0, found: [], testStatus: null, testStatusKind: null });
         try {
-            if (typeof IMEShell !== "undefined") {
-                const ime = new IMEShell("newtube-server-input", () => {}, this);
-                this._ime = ime;
-                this.setState({ editingServer: true, serverDraft: input.value });
+            const found = await discoverServer({
+                timeoutMs: 25000,
+                onProgress: (p) => this.setState({ scanProgress: p }),
+            });
+            if (found.length === 0) {
+                this.setState({
+                    scanning: false,
+                    testStatus: "Hiç sunucu bulunamadı. PC'nin açık ve NewTube'ın çalışıyor olduğundan emin ol.",
+                    testStatusKind: "err",
+                });
             } else {
-                // Fallback: just focus the input. The browser may or may
-                // not pop a soft keyboard depending on the firmware.
-                input.focus();
-                this.setState({ editingServer: true, serverDraft: input.value });
+                this.setState({ scanning: false, found });
             }
         } catch (e) {
-            input.focus();
-            this.setState({ editingServer: true, serverDraft: input.value });
+            this.setState({
+                scanning: false,
+                testStatus: "Tarama hatası: " + e.message,
+                testStatusKind: "err",
+            });
         }
     };
 
-    _finishEditing = () => {
+    _pickFound = (item) => {
+        const url = `http://${item.ip}:${item.port}`;
+        config.serverBase = url;
+        localStorage.setItem(config.STORAGE_KEY, url);
+        this.setState({
+            found: [],
+            testStatus: "Seçildi: " + url,
+            testStatusKind: "ok",
+        });
+        setTimeout(() => this.setState({ testStatus: null, testStatusKind: null }), 3500);
+    };
+
+    /**
+     * Open the manual server-URL editor.  We render an <input> in the
+     * DOM and use Samsung's IMEShell to attach the TV's on-screen
+     * keyboard.  Crucially, the input is VISIBLE (in a modal) so
+     * the keyboard actually appears.
+     */
+    _openEditor = () => {
+        this.setState({ editing: true, editDraft: config.serverBase });
+        // Attach IME on next tick so the input is in the DOM
+        setTimeout(() => this._attachIME(), 50);
+    };
+
+    _attachIME = () => {
         try {
-            const v = (this.state.serverDraft || "").trim();
-            if (v) {
-                config.serverBase = v;
-                this.setState({ testStatus: "Kaydedildi: " + v, testStatusKind: "ok" });
-                setTimeout(() => this.setState({ testStatus: null, testStatusKind: null }), 3500);
+            if (typeof IMEShell === "undefined") return;
+            // Tear down any old shell
+            if (this._ime) {
+                try { this._ime.destroy && this._ime.destroy(); } catch (e) {}
             }
-        } finally {
-            this.setState({ editingServer: false });
+            this._ime = new IMEShell("newtube-server-input", () => {
+                // IME init callback
+                if (this._ime && this._ime.getInputObj) {
+                    this._ime.setOnCompleteFunc(() => this._onEditChange());
+                    this._ime.getInputObj().focus();
+                }
+            }, this);
+        } catch (e) {
+            // Even without IME, the input is focusable; user can use
+            // the remote's character-entry mode on some models.
+            try {
+                const el = document.getElementById("newtube-server-input");
+                if (el) el.focus();
+            } catch (_) {}
         }
     };
 
-    _cancelEditing = () => {
-        this.setState({ editingServer: false });
+    _onEditChange = () => {
+        const el = document.getElementById("newtube-server-input");
+        if (el) this.setState({ editDraft: el.value });
+    };
+
+    _saveEdit = () => {
+        const v = (this.state.editDraft || "").trim();
+        if (v) {
+            config.serverBase = v;
+            localStorage.setItem(config.STORAGE_KEY, v);
+            this.setState({ editing: false, testStatus: "Kaydedildi: " + v, testStatusKind: "ok" });
+            setTimeout(() => this.setState({ testStatus: null, testStatusKind: null }), 3000);
+        } else {
+            this.setState({ editing: false });
+        }
+    };
+
+    _cancelEdit = () => {
+        this.setState({ editing: false });
     };
 
     _testServer = () => {
         const base = config.serverBase;
         if (!base) {
-            this.setState({ testStatus: "Önce bir URL gir", testStatusKind: "err" });
+            this.setState({ testStatus: "Önce bir URL ayarla", testStatusKind: "err" });
             return;
         }
         this.setState({ testStatus: "Test ediliyor " + base + "...", testStatusKind: null });
@@ -141,15 +189,17 @@ export default class Settings extends React.Component {
     };
 
     onItemSelected = (item) => {
-        if (item.key === SERVER_OPTION) {
-            this._openServerEditor();
+        if (item.key === SCAN_OPTION) {
+            this._scanNetwork();
+        } else if (item.key === SERVER_OPTION) {
+            this._openEditor();
         } else if (item.key === TEST_OPTION) {
             this._testServer();
         } else if (item.key === CLEAR_CACHE_OPTION) {
             this._clearCache();
         } else if (item.key === ABOUT_OPTION) {
             this.setState({
-                testStatus: "NewTube 1.0.0 — YouTube for legacy Samsung Smart TVs",
+                testStatus: "NewTube 1.0.1 — YouTube for legacy Samsung Smart TVs",
                 testStatusKind: "ok",
             });
             setTimeout(() => this.setState({ testStatus: null, testStatusKind: null }), 5000);
@@ -160,29 +210,63 @@ export default class Settings extends React.Component {
         return (
             <div className="tab-section settings" style={this.props.style}>
                 <RemoteControlListener
-                    onKeyReturn={() => this.state.editingServer ? this._cancelEditing() : this.onReturn()}
-                    onKeyEnter={() => this.state.editingServer ? this._finishEditing() : null}
+                    onKeyReturn={() => this.state.editing ? this._cancelEdit() : this.onReturn()}
+                    onKeyEnter={() => this.state.editing ? this._saveEdit() : null}
                 />
                 <div className="server-info">
                     <small>NewTube sunucu</small>
                     <h2>{config.serverBase}</h2>
                 </div>
+
                 {this.state.testStatus ? (
                     <p className={"status " + (this.state.testStatusKind || "")}>{this.state.testStatus}</p>
                 ) : null}
-                {this.state.editingServer ? (
-                    <p className="editing-hint">
-                        Klavyeyle yazın, <b>Tamam</b>'a basınca kaydeder.
-                        <br/><small>{this.state.serverDraft}</small>
-                    </p>
+
+                {this.state.scanning ? (
+                    <p className="scanning">Ağ taranıyor... {this.state.scanProgress}%</p>
                 ) : null}
+
+                {this.state.found && this.state.found.length > 0 ? (
+                    <div className="found-servers">
+                        <p><b>Bulunan sunucular — TV kumandasıyla seç:</b></p>
+                        <List
+                            ref={ref => this.foundRef = ref}
+                            items={this.state.found.map(f => ({
+                                key: `${f.ip}:${f.port}`,
+                                name: `${f.ip}:${f.port}  (${f.rttMs}ms)`,
+                            }))}
+                            onReturn={() => { this.setState({ found: [] }); this.focus(); }}
+                            onSelectBeforeFirst={() => { this.setState({ found: [] }); this.focus(); }}
+                            onItemSelected={this._pickFound}
+                        />
+                    </div>
+                ) : null}
+
+                {this.state.editing ? (
+                    <div className="server-editor">
+                        <p>Sunucu URL'sini yaz. Samsung TV kumandasının klavyesi açılacak.</p>
+                        <input
+                            id="newtube-server-input"
+                            type="text"
+                            defaultValue={this.state.editDraft}
+                            onChange={this._onEditChange}
+                            autoFocus
+                        />
+                        <div className="editor-buttons">
+                            <a className="button" href="javascript:void(0);" onClick={this._saveEdit}>Kaydet</a>
+                            <a className="button secondary" href="javascript:void(0);" onClick={this._cancelEdit}>İptal</a>
+                        </div>
+                    </div>
+                ) : null}
+
                 <List
                     ref={ref => this.listRef = ref}
                     items={[
-                        { key: SERVER_OPTION, name: 'NewTube sunucu URL\'sini ayarla' },
-                        { key: TEST_OPTION, name: 'Sunucuya bağlantıyı test et' },
-                        { key: CLEAR_CACHE_OPTION, name: 'Yerel önbelleği temizle' },
-                        { key: ABOUT_OPTION, name: 'Hakkında' },
+                        { key: SCAN_OPTION, name: '🔍 Ağda NewTube sunucu ara (otomatik)' },
+                        { key: SERVER_OPTION, name: '⌨️  Sunucu URL\'sini elle yaz' },
+                        { key: TEST_OPTION, name: '✓  Sunucuya bağlantıyı test et' },
+                        { key: CLEAR_CACHE_OPTION, name: '🗑️  Yerel önbelleği temizle' },
+                        { key: ABOUT_OPTION, name: 'ℹ️  Hakkında' },
                     ]}
                     onReturn={this.onReturn}
                     onSelectBeforeFirst={this.props.onTabsFocus}
